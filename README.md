@@ -4,6 +4,7 @@ allow us to find the ancestors of a group as well as decendents of a group.
 
 ## How to use
 Clone repository into local filesystem using `git` and run mongodb shell commands:
+
 1. change directory: 
     ```bash
     $ cd [SOME_DIRECTORY]
