@@ -22,7 +22,7 @@ var groupManagement = (function(){
                             {groupname: {$type: 'string'}},
                             {'groupusers.0': {$exists: true}},
                             {'groupattrs.0': {$exists: true}},
-                            {active: {$in: ['ACTIVE', 'INACTIVE']}}
+                            {status: {$in: ['ACTIVE', 'INACTIVE']}}
                         ]
                     }
                 })
@@ -33,7 +33,7 @@ var groupManagement = (function(){
                 groupname: _ADMIN_GROUP,
                 groupusers: _ADMIN_USERS,
                 groupattrs: _ADMIN_ATTRS,
-                active: 'ACTIVE'
+                status: 'ACTIVE'
             });
             print('createFirstGroup(): successfully created admin group');
         }catch(wError){
@@ -56,7 +56,7 @@ var groupManagement = (function(){
                 groupusers: [user],
                 groupattrs: attributes,
                 groupmeta: metadata,
-                active: 'ACTIVE',
+                status: 'ACTIVE',
                 parent: doc
             });
             db[_COLL_NAME].updateOne({_id: doc['_id']}, {$push: {children: {groupname: groupName, groupid: ret.insertedId}}});
@@ -101,6 +101,31 @@ var groupManagement = (function(){
         } catch(wEerror){
             print('deleteGroup(): failed to delete group');
             throw wEerror;
+        }
+    };
+
+    /*
+     * not fully tested - need to have a look
+     */
+    var removeGroupWithRelink = function(groupName) {
+        db = db.getSiblingDB(_DB_NAME);
+        var doc = db[_COLL_NAME].findOne({groupname: groupName});
+
+        if(!doc.hasOwnProperty('parent') && doc['parent'] !== ''){
+            //doc does not have parent - must be root
+            print('removeGroupWithRelink(): cannot remove root document');
+            return;
+        }
+
+        try {
+            db[_COLL_NAME].updateOne({groupname: doc['parent']}, {$addToSet: {groupusers: {$each: doc['children']}}});
+            db[_COLL_NAME].updateOne({groupname: doc['parent']}, {
+                $pull: { children: { groupname: doc['groupname'],  groupid: doc['_id'] } }
+            });
+            db[_COLL_NAME].deleteOne({groupname: doc['groupname']});
+        } catch(wError){
+            print('removeGroupWithRelink(): failed to update document');
+            throw wError;
         }
     };
 
