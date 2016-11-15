@@ -1,11 +1,7 @@
 /*
  * graphExample.js
- * ---------------
  *
- * This is a simple prototype of what some group management commands might look like (basic demo commands)
- * This is a MongoDB javascript file meaning that certain functions and objects are only present in the MongoDB
- * javascript shell.
- *
+ * simple example of using the $graphLookup operator in a single collection
  */
 var groupManagement = (function(){
     var _DB_NAME     = 'groupManagement';
@@ -14,25 +10,30 @@ var groupManagement = (function(){
     var _ADMIN_USERS = ['gadmin1', 'gadmin2', 'gadmin3'];
     var _ADMIN_ATTRS = ['owner', 'createGroups', 'deleteGroups', 'updateGroups', 'givePermissions'];
 
-    /*
-     * createFirstGroup()
-     * This is the first group to create, this is basically the start of the example:
-     * (1) if the collection has data drop it
-     * (2) create admin group
-     */
     var createFirstGroup = function(){
-        print('createFirstGroup(): Attempting to create first group');
         db = db.getSiblingDB(_DB_NAME);
 
         if(db[_COLL_NAME].findOne() != null){
             db[_COLL_NAME].drop();
+            db.createCollection(_COLL_NAME,
+                {
+                    validator: {
+                        $and: [
+                            {groupname: {$type: 'string'}},
+                            {'groupusers.0': {$exists: true}},
+                            {'groupattrs.0': {$exists: true}},
+                            {active: {$in: ['ACTIVE', 'INACTIVE']}}
+                        ]
+                    }
+                })
         }
 
         try {
             db[_COLL_NAME].insertOne({
                 groupname: _ADMIN_GROUP,
                 groupusers: _ADMIN_USERS,
-                groupattrs: _ADMIN_ATTRS
+                groupattrs: _ADMIN_ATTRS,
+                active: 'ACTIVE'
             });
             print('createFirstGroup(): successfully created admin group');
         }catch(wError){
@@ -41,15 +42,7 @@ var groupManagement = (function(){
         }
     };
 
-    /*
-     * createGroup()
-     * This is a simplified version of what needs to be done when creating a new group, but the gist will be:
-     * (1) ensure parent exists
-     * (2) create childe group with all attributes & metadata with the initial user that asked for the creation
-     * (3) finally link the parent to the created child
-     */
     var createGroup = function(parent, groupName, attributes, metadata, user){
-        print('createGroup(): Attempting to create ' + groupName);
         db  = db.getSiblingDB(_DB_NAME);
         var doc = db[_COLL_NAME].findOne({groupname: parent}, {_id: 1, groupname: 1});
         if(doc === null || doc === {}){
@@ -58,14 +51,15 @@ var groupManagement = (function(){
         }
 
         try {
-            db[_COLL_NAME].insertOne({
+            var ret = db[_COLL_NAME].insertOne({
                 groupname: groupName,
                 groupusers: [user],
                 groupattrs: attributes,
                 groupmeta: metadata,
+                active: 'ACTIVE',
                 parent: doc
             });
-            db[_COLL_NAME].updateOne({_id: doc['_id']}, {$push: {children: groupName}});
+            db[_COLL_NAME].updateOne({_id: doc['_id']}, {$push: {children: {groupname: groupName, groupid: ret.insertedId}}});
             print('createGroup(): Successfully created and linked group');
         }catch(wError){
             print('createFirstGroup(): failed to create first group - ' + wError.errmsg);
@@ -74,7 +68,6 @@ var groupManagement = (function(){
     };
 
     var addUsersToGroup = function(groupName, users){
-        print('addUsersToGroup(): attempting to add users to group - ' + groupName);
         db = db.getSiblingDB(_DB_NAME);
         try {
             db[_COLL_NAME].updateOne({groupname: groupName}, {$addToSet: {groupusers: {$each: users}}});
@@ -85,11 +78,7 @@ var groupManagement = (function(){
         }
     }
 
-    /*
-     * deleteGroup()
-     */
     var deleteGroup = function(groupName){
-        print('deleteGroup(): attempting to delete group - ' + groupName);
         db = db.getSiblingDB(_DB_NAME);
         var doc = db[_COLL_NAME].findOne({groupname: groupName});
         if(doc !== null || doc !== {}){
@@ -115,9 +104,6 @@ var groupManagement = (function(){
         }
     };
 
-    /*
-     * findParent()
-     */
     var findParent = function(groupName){
         db = db.getSiblingDB(_DB_NAME);
         var cursor = db[_COLL_NAME].aggregate([
@@ -138,9 +124,6 @@ var groupManagement = (function(){
         return cursor.toArray();
     };
 
-    /*
-     * findAncestors()
-     */
     var findAncestors = function(groupName){
         db = db.getSiblingDB(_DB_NAME);
         var cursor = db[_COLL_NAME].aggregate([
@@ -160,9 +143,6 @@ var groupManagement = (function(){
         return cursor.toArray();
     };
 
-    /*
-     * findChildren()
-     */
     var findChildren = function(groupName){
         db = db.getSiblingDB(_DB_NAME);
         var cursor = db[_COLL_NAME].aggregate([
@@ -172,8 +152,8 @@ var groupManagement = (function(){
             {
                 $graphLookup: {
                     from: _COLL_NAME,
-                    startWith: '$children',
-                    connectFromField: 'children',
+                    startWith: '$children.groupname',
+                    connectFromField: 'children.groupname',
                     connectToField: 'groupname',
                     as: 'directdescendants',
                     depthField: 'depth',
@@ -183,9 +163,6 @@ var groupManagement = (function(){
         return cursor.toArray();
     };
 
-    /*
-     * findDescendants()
-     */
     var findDescendants = function(groupName){
         db = db.getSiblingDB(_DB_NAME);
         var cursor = db[_COLL_NAME].aggregate([
@@ -195,8 +172,8 @@ var groupManagement = (function(){
             {
                 $graphLookup: {
                     from: _COLL_NAME,
-                    startWith: '$children',
-                    connectFromField: 'children',
+                    startWith: '$children.groupname',
+                    connectFromField: 'children.groupname',
                     connectToField: 'groupname',
                     as: 'descendants',
                     depthField: 'depth'
@@ -205,6 +182,44 @@ var groupManagement = (function(){
         return cursor.toArray();
     };
 
+    var findGroupsByUser = function(user){
+        db = db.getSiblingDB(_DB_NAME);
+        var cursor = db[_COLL_NAME].find({groupusers: user});
+        return cursor.toArray();
+    }
+
+    var findAncestorGroupsByUser = function(user){
+        db = db.getSiblingDB(_DB_NAME);
+        var cursor = db[_COLL_NAME].aggregate([
+            {
+                $match: {groupusers: user}
+            },
+            {
+                $graphLookup: {
+                    from: _COLL_NAME,
+                    startWith: '$parent.groupname',
+                    connectFromField: 'parent.groupname',
+                    connectToField: 'groupname',
+                    as: 'ancestors',
+                    depthField: 'depth'
+                }
+            },
+            {
+                $project: {
+                    ancestors: 1,
+                    _id: 0
+                }
+            },
+            {
+                $unwind: '$ancestors'
+            }
+        ]);
+        return cursor.toArray();
+    }
+
+    /*
+     * maybe move to a json file?
+     */
     var createDemo = function(){
         db = db.getSiblingDB(_DB_NAME);
         // admin group
@@ -262,6 +277,8 @@ var groupManagement = (function(){
         findAncestors: findAncestors,
         findChildren: findChildren,
         findDescendants: findDescendants,
+        findGroupsByUser: findGroupsByUser,
+        findAncestorGroupsByUser: findAncestorGroupsByUser,
         createDemo: createDemo
     };
 }());
