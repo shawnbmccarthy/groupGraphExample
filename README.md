@@ -45,7 +45,7 @@ a database **groupManagement** and a collection **groups**.
   parent: {
     groupname: 'NAME OF PARENT',
     groupid: 'PARENT GROUP ID'
-  }
+  },
+  status: 'ACTIVE INACTIVE'
 }
 ```
-Everything but the children and parent are currently not required.
