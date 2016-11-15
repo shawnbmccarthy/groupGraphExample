@@ -6,18 +6,22 @@ allow us to find the ancestors of a group as well as decendents of a group.
 Clone repository into local filesystem using `git` and run mongodb shell commands:
 
 1. change directory: 
+
     ```bash
     $ cd [SOME_DIRECTORY]
     ```
 2. clone repo into directory: 
+
     ```bash
     $ git clone https://github.com/shawnbmccarthy/groupGraphExample
     ```
 3. start mongodb shell:
+
     ```bash
     <PATH_TO_MDB>/bin/mongo <SOME_DIRECTORY>/groupGraphExample/graphExample.js --shell
     ```
 4. start demo:
+
     ```javascript
     > groupManagement.createDemo();
     > groupManagement.findChildren('global administrators');
